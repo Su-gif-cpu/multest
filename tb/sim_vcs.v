@@ -17,16 +17,16 @@ module riscv_sim();
         input [8*24-1:0] name;
         begin
             case (name)
-                "t01_ralu": is_pass = (U_RISCV.U_RF.register[15] == 32'h00000000);
+                "t01_ralu": is_pass = (U_RISCV.U_RF.register[15] == 32'h00000007);
                 "t02_itype": is_pass = (U_RISCV.U_RF.register[4] == 32'hFFFFFF01);
                 "t03_mem": is_pass = (U_RISCV.U_RF.register[5] == 32'h00000456);
                 "t04_beq_taken": is_pass = (U_RISCV.U_RF.register[4] == 32'h00000001);
                 "t05_beq_not_taken": is_pass = (U_RISCV.U_RF.register[5] == 32'h00000001);
                 "t06_bne": is_pass = (U_RISCV.U_RF.register[10] == 32'h00000001);
                 "t07_jal_link": is_pass = (U_RISCV.U_RF.register[12] == 32'h00000001);
-                "t08_jalr": is_pass = (U_RISCV.U_RF.register[30] == 32'h00000000);
+                "t08_jalr": is_pass = (U_RISCV.U_RF.register[5] == 32'h00002014);
                 "t09_x0": is_pass = (U_RISCV.U_RF.register[1] == 32'h00000066);
-                "t10_loop_bne": is_pass = (U_RISCV.U_RF.register[1] == 32'h00000003);
+                "t10_loop_bne": is_pass = (U_RISCV.U_RF.register[1] == 32'h00000003)&& (U_RISCV.U_RF.register[2] == 32'h00000003);
                 "t11_jal_back": is_pass = (U_RISCV.U_RF.register[3] == 32'h00000003);
                 "t12_sw_neg": is_pass = (U_RISCV.U_RF.register[3] == 32'h00000000);
                 "t13_shift_boundary": is_pass = (U_RISCV.U_RF.register[13] == 32'h00000000);

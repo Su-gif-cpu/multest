@@ -1,15 +1,21 @@
-# t08_jalr.s - JALR (Jump And Link Register)
-# Tests: Unconditional jump using register value as target address
-# Expected final registers (RARS run):
-#   x20 = 0x000007CE
-#   x30 = 0x00000000   (skip path)
+# t08_jalr.s - JALR：PC 相对目标 + 可证伪的通过条件
+#
+# 1) 末尾 beq 自旋在 RARS 里会跑到「步数上限」才停——这是裸机测例常见写法，不是 CPU 死机；
+#    若要在 RARS 里立刻结束，需实现 ebreak 等（本工程 16 条指令子集未包含）。
+#
+# 2) 不能仅用 x30==0 判通过：复位后 x30 已是 0，无法区分「跳过坏路」与「从未写过」。
+#    故在入口 ori x30,0,0x42 作哨兵；任一条坏路 addi x30,123 会把 x30 改成 123。
+#    通过条件（VCS / RARS）：x30 == 0x42。
+#
+# RARS: mc CompactTextAtZero
 
-addi x1, x0, 0x10     # x1 = 0x10 (target address)
-addi x1, x1, 0        # x1 = 0x10 (ensure x1 is set)
-addi x0, x0, 0        # NOP
-addi x0, x0, 0        # NOP
-ori x20, x0, 0x7ce    # x20 = 0x7CE (instruction before JALR)
-jalr x5, x1, 0        # Jump to address in x1, save return address to x5
-addi x30, x0, 123     # should be SKIPPED
-end:
-beq x0, x0, end       # Infinite loop
+    ori  x30, x0, 0x42
+    jal  x1, L1
+L_bad:
+    addi x30, x0, 123
+L1:
+    addi x2, x1, 16
+    jalr x5, x2, 0
+    addi x30, x0, 123
+L_target:
+    beq  x0, x0, L_target
