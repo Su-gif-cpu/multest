@@ -1,0 +1,70 @@
+# VCS/Verdi simulation Makefile for multicycle RISCV CPU
+# This file is independent from sim/Makefile and sim/files.f.
+# Usage:
+#   make -f Makefile.vcs run TEST=t01_ralu
+#   make -f Makefile.vcs all
+
+MAKEFILE_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
+TEST ?= t01_ralu
+SEED ?= 1
+TIMEOUT ?= 500000
+VERDI_HOME ?= $(VERDI_HOME)
+
+TESTS = t01_ralu t02_itype t03_mem t04_beq_taken t05_beq_not_taken t06_bne t07_jal_link t08_jalr t09_x0 t10_loop_bne t11_jal_back t12_sw_neg t13_shift_boundary t14_add_negative t15_bne_false t16_lw_negative_extend t17_addi_bounds t18_ori_and t19_xor_sign t20_sub_self t21_srl_rs0 t22_sll31 t23_beq_always t24_jal_jalr_ret t25_sw_overwrite t26_alu_chain t27_sra_neg1 t28_bne_taken t29_or_combine t30_sw_lw_min_offset t31_jalr_imm t32_add_maxint_wrap t33_sra_pos_msb t34_lw_x0_rs t35_mem_chain_offsets t36_bne_loop10 t37_beq_fallthrough2 t38_sub_from_zero
+
+default: test
+
+all: compile
+	@set -e; \
+	for t in $(TESTS); do \
+		echo "===================================================="; \
+		echo " Running test: $$t"; \
+		./simv +TEST=$$t +TIMEOUT=$(TIMEOUT) +vcs+loopdetect +vcs+loopreport -l simv_$$t.log; \
+		echo "===================================================="; \
+	done
+
+.PHONY: all test run compile clean help verdi $(TESTS)
+
+$(TESTS):
+	@echo "===================================================="
+	@echo " Running test: $@"
+	@$(MAKE) -f $(MAKEFILE_DIR)Makefile.vcs run TEST=$@ TIMEOUT=$(TIMEOUT)
+	@echo "===================================================="
+
+
+test: run
+
+run: compile
+	./simv +TEST=$(TEST) +TIMEOUT=$(TIMEOUT) +vcs+loopdetect +vcs+loopreport -l simv_$(TEST).log
+
+compile:
+	vcs \
+	-f $(MAKEFILE_DIR)files_vcs.f \
+	-timescale=1ns/1ps \
+	-full64 +vc +v2k -sverilog -debug_all \
+	-LDFLAGS -Wl,--no-as-needed \
+	-cm line+cond+tgl+fsm \
+	-P $(VERDI_HOME)/share/PLI/VCS/LINUX64/novas.tab \
+	$(VERDI_HOME)/share/PLI/VCS/LINUX64/pli.a \
+	-timescale=1ns/1ps +notimingchecks +nospecify \
+	| tee compile.log
+
+clean:
+	rm -rf simv* csrc* *.tmp *.vpd *.key *.log *.fsdb novas.fsdb* verdiLog stack.info*
+
+help:
+	@echo "==============================================================================="
+	@echo " "
+	@echo " USAGE: make -f Makefile.vcs [target] TEST=tXX_name SEED=nnn" 
+	@echo " "
+	@echo " Targets: "
+	@echo "   test    => compile and run $(TEST)" 
+	@echo "   run     => run a single test specified by TEST" 
+	@echo "   all     => compile and run all tests sequentially" 
+	@echo "   clean   => remove generated simulator files and logs" 
+	@echo " "
+	@echo " Example: make -f Makefile.vcs run TEST=t05_beq_not_taken" 
+	@echo "==============================================================================="
+
+verdi:
+	verdi -autoalias -2012 -nologo -f $(MAKEFILE_DIR)files_vcs.f -ssf novas.fsdb &
