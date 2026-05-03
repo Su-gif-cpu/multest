@@ -28,7 +28,6 @@ module riscv_sim ();
         end
         
         // 载入正确的 Hex 机器码
-        // 请确保你的指令存储器(U_IM)取指逻辑类似： instruction = memory[(PC - 32'h2000) >> 2];
         $readmemh("../hex/code.hex", U_RISCV.U_IM.memory);  
         $display("Instruction memory initialized. CPU PC starts at 0x%8X", PC_BASE);
         $monitor("Time: %0t | PC = 0x%8X, IR = 0x%8X", $time, U_RISCV.U_PC.PC, U_RISCV.out_ins);
@@ -43,16 +42,12 @@ module riscv_sim ();
     // Clock Generation (周期为 100ns)
     always #(50) clk = ~clk;
 
-    // ========================================================
     // IPC 监测与统计变量
-    // ========================================================
     integer total_cycles = 0;   // 总运行时钟周期
     integer total_instrs = 0;   // 总执行指令数
     real    ipc_value    = 0.0; // IPC 浮点结果
 
-    // ========================================================
     // 错误标志寄存器
-    // ========================================================
     reg test_failed_beq = 0;
     reg test_failed_jalr_skip = 0;
     
@@ -70,30 +65,24 @@ module riscv_sim ();
     // 结果判定逻辑
     always @(posedge clk) begin
         if (rst == 0) begin
-            // 统计周期与指令数 (假设 PCWrite 高电平时更新PC，即指令完成)
+            // 统计周期与指令数 (PCWrite 高电平时更新PC，即指令完成)
             total_cycles = total_cycles + 1;
             if (U_RISCV.PCWrite == 1'b1) begin
                 total_instrs = total_instrs + 1;
             end
 
-            // ----------------------------------------------------
             // 监控 1：判断 beq 跳转是否失败（PC 是否掉入了偏移 0x88 区域）
-            // ----------------------------------------------------
             if (U_RISCV.U_PC.PC == (PC_BASE + 32'h00000088)) begin
                 test_failed_beq = 1;
             end
             
-            // ----------------------------------------------------
             // 监控 2：判断 JALR 跳过逻辑是否失败（PC 是否掉入了偏移 0xA8/0xAC 区域）
-            // ----------------------------------------------------
             if (U_RISCV.U_PC.PC == (PC_BASE + 32'h000000A8) || 
                 U_RISCV.U_PC.PC == (PC_BASE + 32'h000000AC)) begin
                 test_failed_jalr_skip = 1;
             end
             
-            // ----------------------------------------------------
             // 监控 3：到达程序的最后一条原地死循环指令 (偏移 0xB4)
-            // ----------------------------------------------------
             if (U_RISCV.U_PC.PC == (PC_BASE + 32'h000000B4)) begin
                 ipc_value = $itor(total_instrs) / $itor(total_cycles); 
                 
@@ -142,9 +131,7 @@ module riscv_sim ();
         end
     end
 
-    // ========================================================
     // Verdi 波形导出 (FSDB)
-    // ========================================================
     initial begin
         $fsdbDumpvars(0, "riscv_sim"); 
         $fsdbDumpMDA(0, "riscv_sim");  

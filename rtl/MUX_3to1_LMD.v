@@ -21,7 +21,7 @@
 
 `include "ctrl_signal_def.v"
 module MUX_3to1_LMD(X, ALU_result_bypass, Y, Z, control, out);
-    input [31:0] X;                 // 弃用
+    input [31:0] X;               
     input [31:0] ALU_result_bypass; // 使用实时信号
     input [31:0] Y;
     input [31:0] Z;

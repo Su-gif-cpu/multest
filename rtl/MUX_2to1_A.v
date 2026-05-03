@@ -1,7 +1,7 @@
 `include "ctrl_signal_def.v"
 
 module MUX_2to1_A(X, RD1_bypass, Y, control, out);
-    input [31:0] X;           // 弃用
+    input [31:0] X;           
     input [31:0] RD1_bypass;  // 使用实时信号
     input [4:0] Y;
     input control;

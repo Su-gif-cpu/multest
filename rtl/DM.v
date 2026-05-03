@@ -17,13 +17,9 @@ module DM( Addr, Addr_bypass, WD, WD_bypass, clk, DMCtrl, RD);
     always @(posedge clk) begin
         if (DMCtrl == 2'b10) begin
             memory[Addr_bypass] <= WD_bypass; 
-            // ----- 增加这行无敌探针，看看到底写了什么！ -----
-            $display("[DM WRITE] Time: %0t | Addr: %0d | Data: %h", $time, Addr_bypass, WD_bypass);
         end
         if (DMCtrl == 2'b01) begin
             RD <= memory[Addr_bypass];        
-            // ----- 增加这行无敌探针，看看到底读了什么！ -----
-            $display("[DM READ]  Time: %0t | Addr: %0d | Data: %h", $time, Addr_bypass, memory[Addr_bypass]);
         end
     end
 endmodule
