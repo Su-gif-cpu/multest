@@ -50,7 +50,7 @@ asm volatile ("ori x0,x1,0");
 asm volatile ("ori x0,x1,0");
 asm volatile ("ori x0,x1,0");
 asm volatile ("_btest:     ");
-asm volatile ("lw x30,4(x29)");
+asm volatile ("lw x30,4(x29)");     // x30=0x000000ab验证点
 // 测试 JALR
 asm volatile ("_jalr_test: ");
 asm volatile ("addi x6, x0, 20");   // 将某个偏移量或地址基址存入 x6
