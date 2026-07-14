@@ -21,27 +21,42 @@ module riscv_sim ();
     // ========================================================
     // 初始化与复位
     // ========================================================
+    reg [31:0] temp_im_mem [0:1023]; // 声明一个临时的 1维 32位 数组（最大 1024 个字）
+    integer i_load;
+
     initial begin
-        // 初始化寄存器堆 (Register File)
+        // 初始化寄存器堆
         for (i = 1; i < 32; i = i + 1) begin
             U_RISCV.U_RF.register[i] = 32'h0;
         end
 
-        // 初始化数据存储器 (Data Memory)
-        for (i = 0; i < 1024; i = i + 1) begin
-            U_RISCV.U_DM.memory[i] = 32'h0;
+        // 读入 flat 1D 十六进制机器码
+        $readmemh("../hex/code.hex", temp_im_mem);
+
+        // ========================================================
+        // TSMC SRAM (2048x64m8) 地址映射安全载入算法
+        // ========================================================
+        // A = i_load 映射到 SRAM 内部数据结构:
+        // row = i_load / 8  (即 i_load >> 3)
+        // col = i_load % 8  (即 i_load & 3'h7)
+        // 方案 A：32位指令装载至 64位 SRAM 存储单元的低 32 位中，高 32 位补零。
+        for (i_load = 0; i_load < 1024; i_load = i_load + 1) begin
+            U_RISCV.U_IM.memory.MEMORY[i_load >> 3][i_load & 3'h7] = {32'h0, temp_im_mem[i_load]};
         end
         
-        // 载入正确的 Hex 机器码到指令存储器
-        // 注意：如果 hex 文件中带有 @2000 标识，请确保 U_IM 模块能正确处理基地址映射
-        $readmemh("../hex/code.hex", U_RISCV.U_IM.memory);  
-        
-        $display("\n[INIT] Instruction memory initialized.");
+        $display("\n[INIT] Instruction memory initialized with correct SRAM matrix mapping.");
         $display("[INIT] CPU PC starts at 0x%08X\n", PC_BASE);
         
         // 监控核心运行状态
         $monitor("Time: %0t | PC = 0x%08X | IR = 0x%08X", $time, U_RISCV.U_PC.PC, U_RISCV.out_ins);
         
+        #1; // 等待 1ns 赋值完成
+        // 打印 SRAM 内部对应 Row 0, Col 0 和 Col 1 存储的内容，确认载入成功
+        $display("[MEM_DEBUG] SRAM MEMORY[0][0] (Addr 0, Expected: 07b06b93): %h", 
+                 U_RISCV.U_IM.memory.MEMORY[0][0][31:0]);
+        $display("[MEM_DEBUG] SRAM MEMORY[0][1] (Addr 1, Expected: 67806c13): %h", 
+                 U_RISCV.U_IM.memory.MEMORY[0][1][31:0]);
+
         // 产生复位信号
         clk = 1;
         #5;       
@@ -101,7 +116,7 @@ module riscv_sim ();
             if (U_RISCV.U_PC.PC == (PC_BASE + END_PC)) begin
                 ipc_value = $itor(total_instrs) / $itor(total_cycles); 
                 
-                // 联合判断所有寄存器预期结果 (结合你的 C 代码逻辑)
+                // 联合判断所有寄存器预期结果
                 if (U_RISCV.U_RF.register[30] == 32'h000000AB &&                        // 访存验证点
                     U_RISCV.U_RF.register[3]  == 32'h000000C0 &&                        // ALU/BNE循环验证点 (192)
                     U_RISCV.U_RF.register[2]  == 32'h000000C0 &&                        // ALU/BNE循环验证点 (192)

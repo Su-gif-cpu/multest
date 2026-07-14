@@ -19,5 +19,8 @@
 ../rtl/RF.v
 ../rtl/riscv.v
 
+// SRAM model (added for simulation)
+/home/library/tsmc65lp/sram/ts1n65lpll2048x64m8_220a/VERILOG/ts1n65lpll2048x64m8_220a_ss1p08v125c.v
+
 //Testbench
 ../tb/riscv_sim.v

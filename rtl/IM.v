@@ -1,35 +1,34 @@
 `timescale 1ns / 1ps
-//////////////////////////////////////////////////////////////////////////////////
-// Company: 
-// Engineer: 
-// 
-// Create Date: 2024/10/26 09:28:20
-// Design Name: 
-// Module Name: IM
-// Project Name: 
-// Target Devices: 
-// Tool Versions: 
-// Description: 
-// 
-// Dependencies: 
-// 
-// Revision:
-// Revision 0.01 - File Created
-// Additional Comments:
-// 
-//////////////////////////////////////////////////////////////////////////////////
-
 `include "ctrl_signal_def.v"
-module IM(InsMemRW, addr, clk, Ins);
-    input               InsMemRW;       //指令存储单元信号（保留接口兼容性）
-    input       [11:2]  addr;           //指令存储器地址
-    input               clk;            //时钟信号（SRAM宏替换准备）
-    output reg [31:0] Ins;             //取得的指令
-    reg [31:0] memory[0:1023];
 
-    // 修改为纯同步读（不依赖InsMemRW，每周期都读）
+module IM(InsMemRW, addr, clk, Ins);
+    input               InsMemRW;
+    input       [11:2]  addr;
+    input               clk;
+    output      [31:0]  Ins;
+
+    wire [10:0] sram_addr = {1'b0, addr};
+    wire [63:0] sram_dout;
+
+    // 例化 SRAM 宏 (直接使用 clk)
+    TS1N65LPLL2048X64M8 memory (
+        .A   (sram_addr),
+        .D   (64'b0),
+        .Q   (sram_dout),
+        .CLK (clk),                      
+        .CEB (1'b0),                     
+        .WEB (1'b1),                     
+        .BWEB(64'hFFFFFFFF_FFFFFFFF),    
+        .TSEL(2'b01)
+    );
+
+    assign Ins = sram_dout[31:0];
+
+    // 实时打印调试
     always @(posedge clk) begin
-        Ins <= memory[addr];        //同步读指令
+        #2; 
+        $display("[IM_DEBUG] Time: %0t | PC_addr_in: %0d | SRAM_A: %0d | SRAM_Q: %h | Ins_out: %h", 
+                 $time, addr, sram_addr, sram_dout, Ins);
     end
 
 endmodule

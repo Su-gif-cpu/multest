@@ -1,8 +1,6 @@
 `timescale 1ns / 1ps
 `include "ctrl_signal_def.v"
 
-`timescale 1ns / 1ps
-
 module DM( Addr, Addr_bypass, WD, WD_bypass, clk, DMCtrl, RD);
     input [11:2] Addr;
     input [11:2] Addr_bypass;
@@ -10,16 +8,28 @@ module DM( Addr, Addr_bypass, WD, WD_bypass, clk, DMCtrl, RD);
     input [31:0] WD_bypass;
     input clk;
     input [1:0] DMCtrl;
-    output reg [31:0] RD;
+    output [31:0] RD;
 
-    reg [31:0] memory[0:1023];
+    wire active_rw = (DMCtrl == 2'b10) || (DMCtrl == 2'b01);
+    wire [10:0] sram_addr = {1'b0, Addr_bypass};
+    wire [63:0] sram_din = {32'b0, WD_bypass};
+    wire [63:0] sram_dout;
+    wire        sram_ceb = ~active_rw;
+    wire        sram_wen = ~(DMCtrl == 2'b10);
+    wire [63:0] sram_bweb = (DMCtrl == 2'b10) ? {32'hFFFFFFFF, 32'h00000000} : 64'hFFFFFFFF_FFFFFFFF;
 
-    always @(posedge clk) begin
-        if (DMCtrl == 2'b10) begin
-            memory[Addr_bypass] <= WD_bypass; 
-        end
-        if (DMCtrl == 2'b01) begin
-            RD <= memory[Addr_bypass];        
-        end
-    end
+    // 例化 SRAM 宏 (直接使用 clk)
+    TS1N65LPLL2048X64M8 memory (
+        .A   (sram_addr),
+        .D   (sram_din),
+        .Q   (sram_dout),
+        .CLK (clk),                      
+        .CEB (sram_ceb),
+        .WEB (sram_wen),
+        .BWEB(sram_bweb),
+        .TSEL(2'b01)
+    );
+
+    assign RD = sram_dout[31:0];
+
 endmodule
