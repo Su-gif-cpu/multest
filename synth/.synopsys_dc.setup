@@ -1,0 +1,28 @@
+# ==============================================================================
+# Design Compiler Setup File (.synopsys_dc.setup)
+# ==============================================================================
+
+# 1. 定义标准单元与 SRAM 的工艺库绝对路径
+set STCELL_DIR "/home/library/tsmc65lp/std/TSMCHOME/digital/Front_End/timing_power_noise/NLDM/tcbn65lp_220a"
+set SRAM_DIR   "/home/library/tsmc65lp/sram/ts1n65lpll2048x64m8_220a/SYNOPSYS"
+
+# 2. 设置搜索路径 (Search Path)
+set search_path [concat $search_path . ../rtl ../rtl/includes $STCELL_DIR $SRAM_DIR]
+
+# 3. 设置目标库 (Target Library - 选择 1.08V/125C 的 Worst Case 标准单元库)
+set target_library [list "tcbn65lpwc.db"]
+
+# 4. 设置链接库 (Link Library - 包含标准单元、SRAM、以及 DesignWare 算术器件库)
+set link_library [list "*" \
+                       "tcbn65lpwc.db" \
+                       "ts1n65lpll2048x64m8_220a_ss1p08v125c.db" \
+                       "dw_foundation.sldb"]
+
+# 5. 设置合成库 (Synthetic Library)
+set synthetic_library [list "dw_foundation.sldb"]
+
+# 6. 定义工作目录并避免产生命名冲突
+define_design_lib WORK -path ./work
+
+set sh_enable_line_editing true
+history keep 100

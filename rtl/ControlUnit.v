@@ -6,8 +6,8 @@ module ControlUnit(
     input [6:0] opcode,
     input [6:0] Funct7,
     input [2:0] Funct3,
-    output reg PCWrite, InsMemRW, IRWrite, RFWrite,
-    output reg [1:0] DMCtrl, ExtSel, ALUSrcA,
+    output reg PCWrite, InsMemRW, IRWrite, RFWrite, ExtSel, ALUSrcA,
+    output reg [1:0] DMCtrl, 
     output reg [1:0] ALUSrcB, RegSel, NPCOp, WDSel,
     output reg [3:0] ALUOp
 );

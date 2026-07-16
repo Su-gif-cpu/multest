@@ -10,7 +10,7 @@ module IM(InsMemRW, addr, clk, Ins);
     wire [10:0] sram_addr = {1'b0, addr};
     wire [63:0] sram_dout;
 
-    // 例化 SRAM 宏 (直接使用 clk)
+    // 例化 SRAM 宏 
     TS1N65LPLL2048X64M8 memory (
         .A   (sram_addr),
         .D   (64'b0),
