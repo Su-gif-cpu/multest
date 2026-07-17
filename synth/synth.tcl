@@ -34,21 +34,22 @@ elaborate riscv
 current_design riscv
 link
 # ------------------------------------------------------------------------------
-# # 2. 施加时序与物理约束 
+# # 2. 施加时序与物理约束
 # ------------------------------------------------------------------------------
-create_clock -name sys_clk -period 5.2 [get_ports clk]  ;# 目标设为 5.2ns (192MHz)
+create_clock -name sys_clk -period 5.6 [get_ports clk]  ;# 缩短周期至 5.6ns (约 178MHz) 尝试冲击更高频率
 set_ideal_network [get_ports clk]
 set_ideal_network [get_ports rst]
 
-set_clock_uncertainty 0.10 [get_clocks sys_clk]
+set_clock_uncertainty 0.15 [get_clocks sys_clk]
 
-# 输入延迟
+# 输入延迟正常设置
 set_input_delay 1.0 -clock sys_clk [remove_from_collection [all_inputs] clk]
 
-# 将用于防优化的 dummy 端口声明为 False Path
+# 【优化点 1】普通的输出（如果有）设置 output_delay 
+# 【优化点 2】将用于防止优化的 RD 和 out_ins 端口声明为 False Path
 set_false_path -to [get_ports {RD out_ins}]
 
-# 线负载模型
+# 线负载模型保持
 set_wire_load_mode enclosed
 set_wire_load_model -name "wl10" -library "tcbn65lpwc"
 
@@ -66,7 +67,7 @@ group_path -name REGS_TO_REGS -from [all_registers -clock_pins] -to [all_registe
 group_path -name SRAM_TO_REGS -from [get_cells -hierarchical *memory*] -to [all_registers -data_pins] -weight 5
 
 # 施加合理的设计规则约束，促使工具选用高驱动能力的标准单元
-set_max_fanout 30 [current_design]   
+set_max_fanout 25 [current_design]   
 set_max_transition 0.4 [current_design]
 set_boundary_optimization [get_designs riscv]
 set_compile_one2many_structure true
