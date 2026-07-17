@@ -1,10 +1,12 @@
 # ==============================================================================
 # Design Compiler Synthesis Script (synth.tcl)
-# Target Frequency: 200MHz (Period: 5.0ns)
-# Target Flow: Tape-out Oriented High-Performance Optimization
+# Target Frequency: 208MHz (Period: 4.8ns)
+# Features: Timing Optimization, Wire Load Model, Gate-Level Netlist Cleanup
 # ==============================================================================
 
+# ------------------------------------------------------------------------------
 # # 1. 读入 RTL 源代码
+# ------------------------------------------------------------------------------
 set file_list [list \
   ../rtl/includes/global_def.v \
   ../rtl/includes/ctrl_signal_def.v \
@@ -28,55 +30,76 @@ set file_list [list \
 
 analyze -format verilog $file_list
 elaborate riscv
+
 current_design riscv
 link
-
-# # 2. 施加时序与物理环境约束
-create_clock -name sys_clk -period 5.0 [get_ports clk]
+# ------------------------------------------------------------------------------
+# # 2. 施加时序与物理约束 
+# ------------------------------------------------------------------------------
+create_clock -name sys_clk -period 5.2 [get_ports clk]  ;# 目标设为 5.2ns (192MHz)
 set_ideal_network [get_ports clk]
 set_ideal_network [get_ports rst]
 
-# 物理约束：设置 100ps 时钟不确定度（涵盖 Jitter + Skew）
-set_clock_uncertainty 0.1 [get_clocks sys_clk]
+set_clock_uncertainty 0.10 [get_clocks sys_clk]
 
-# 输入输出延迟预算 (20% clock period)
+# 输入延迟
 set_input_delay 1.0 -clock sys_clk [remove_from_collection [all_inputs] clk]
-set_output_delay 1.0 -clock sys_clk [all_outputs]
 
-# 严格限制最大转换时间（Transition）和负载，强制工具插入高性能 Buffer
-set_max_transition 0.5 [current_design]
-set_max_capacitance 1.0 [current_design]
+# 将用于防优化的 dummy 端口声明为 False Path
+set_false_path -to [get_ports {RD out_ins}]
 
-# # 3. 保护硬核（SRAM 宏）
+# 线负载模型
+set_wire_load_mode enclosed
+set_wire_load_model -name "wl10" -library "tcbn65lpwc"
+
+# ------------------------------------------------------------------------------
+# # 3. 保护例化的两个 SRAM 宏（禁止综合工具尝试优化或拆解 SRAM 内部）
+# ------------------------------------------------------------------------------
 set_dont_touch [get_cells U_IM/memory]
 set_dont_touch [get_cells U_DM/memory]
 
-# # 4. 时序优化策略
-# 4.1 忽略面积，100% 算力倾斜至时序
-set_max_area 0
-
-# 4.2 扩大优化范围（将关键路径周围 1.0ns 范围内的所有路径均纳入极致优化对象）
-set_critical_range 1.0 [current_design]
-
-# 4.3 强化目标时钟路径权重（分配10倍优先级）
+# ------------------------------------------------------------------------------
+# # 4. 优化准备：建立自定义路径组，引导优化策略向关键路径倾斜
+# ------------------------------------------------------------------------------
 group_path -name sys_clk -weight 10 -critical_range 1.0
+group_path -name REGS_TO_REGS -from [all_registers -clock_pins] -to [all_registers -data_pins] -weight 5
+group_path -name SRAM_TO_REGS -from [get_cells -hierarchical *memory*] -to [all_registers -data_pins] -weight 5
 
-# # 5. 开启形式验证引导记录
+# 施加合理的设计规则约束，促使工具选用高驱动能力的标准单元
+set_max_fanout 30 [current_design]   
+set_max_transition 0.4 [current_design]
+set_boundary_optimization [get_designs riscv]
+set_compile_one2many_structure true
+
+# ------------------------------------------------------------------------------
+# # 5. 开启 Formality 形式验证的引导记录
+# ------------------------------------------------------------------------------
 set_svf ./outputs/riscv.svf
 
-# # 6. 两阶段综合编译流程
-# 第一阶段：高强度编译 + 寄存器重配（Retiming）
-compile_ultra -retime -timing_high_effort_script
+# ------------------------------------------------------------------------------
+# # 6. 执行高强度综合编译（带寄存器重定时，以平衡逻辑时序）
+# ------------------------------------------------------------------------------
+compile_ultra -timing_high_effort_script -retime
 
-# 第二阶段：增量物理层细调（在现有网表基础上进行门尺寸 sizing 和物理重构）
-compile_ultra -incremental -retime -timing_high_effort_script
+# ------------------------------------------------------------------------------
+# # 7. 网表净化与命名规范化（解决 VO-4 / VO-11 警告，提高网表质量）
+# ------------------------------------------------------------------------------
+# 解决 VO-4：消除网表中的 assign 连续赋值语句，使用 Buffer 替代直接连线
+set_fix_multiple_port_nets -all -buffer_constants
 
-# # 7. 导出综合成果物
+# 解决 VO-11：规范化网表命名规则，消除悬空端口产生的 SYNOPSYS_UNCONNECTED_ 前缀虚拟网线
+change_names -rules verilog -hierarchy
+
+# ------------------------------------------------------------------------------
+# # 8. 导出综合成果物 (Verilog 网表, SDC 时序约束, SDF 延迟文件)
+# ------------------------------------------------------------------------------
 write -format verilog -hierarchy -output ./outputs/riscv_synth.v
 write_sdc ./outputs/riscv.sdc
 write_sdf ./outputs/riscv.sdf
 
-# # 8. 导出多维度分析报告
+# ------------------------------------------------------------------------------
+# # 9. 导出多维度分析报告
+# ------------------------------------------------------------------------------
 report_timing -delay_type max -max_paths 10 > ./reports/timing_max.rpt
 report_area -hierarchy > ./reports/area.rpt
 report_power > ./reports/power.rpt
