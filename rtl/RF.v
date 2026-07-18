@@ -13,7 +13,7 @@ module RF(
 );
 
     reg [31:0] register [1:31]; // 31 个 32 位寄存器
-    reg [31:0] r0 = 32'h0000_0000;
+    wire [31:0] r0 = 32'h0000_0000;
 
     // 时序写入逻辑（完全保持原设计不变）
     always @(posedge clk) begin

@@ -28,7 +28,7 @@ module riscv(
     output wire [31:0] out_ins   // 导出顶层输出2：当前执行指令
 );
 
-wire RFWrite, PCWrite, IRWrite, InsMemRW, ExtSel, zero, ALUSrcA;
+wire RFWrite, PCWrite, IRWrite, InsMemRW, ExtSel, zero, ALUSrcA, IM_UseNPC;
 wire [1:0] DMCtrl; // 恢复 2-bit 声明！
 wire [1:0] ALUSrcB;
 wire [1:0] NPCOp, WDSel, RegSel;
@@ -36,7 +36,7 @@ wire [3:0] ALUOp;
 wire [6:0] opcode;
 wire [2:0] Funct3;
 wire [6:0] Funct7;
-wire [31:0] PC, NPC, PCA4;
+wire [31:0] PC, NPC, PCA4, im_addr;
 wire [31:0] in_ins, DR_out; 
 wire [4:0] rs1, rs2, rd;
 wire [11:0] Imm12;
@@ -67,7 +67,7 @@ ControlUnit U_ControlUnit(
     .clk(clk), .rst(rst), .zero(zero), .opcode(opcode), .Funct7(Funct7), .Funct3(Funct3), 
     .RFWrite(RFWrite), .DMCtrl(DMCtrl), .PCWrite(PCWrite), .IRWrite(IRWrite), .InsMemRW(InsMemRW), 
     .ExtSel(ExtSel), .ALUOp(ALUOp), .NPCOp(NPCOp), .ALUSrcA(ALUSrcA), 
-    .WDSel(WDSel), .ALUSrcB(ALUSrcB), .RegSel(RegSel)
+    .WDSel(WDSel), .ALUSrcB(ALUSrcB), .RegSel(RegSel), .IM_UseNPC(IM_UseNPC)
 );
 
 // 实例化 PC
@@ -80,9 +80,12 @@ NPC U_NPC (
     .PC(PC), .NPCOp(NPCOp), .Offset12(Offset), .Offset20(Offset20), .rs(ALU_result), .PCA4(PCA4), .NPC(NPC)
 );
 
+// EX 阶段用 NPC 预取；IF/BOOT 用 PC
+assign im_addr = IM_UseNPC ? NPC : PC;
+
 // 实例化 IM
 IM U_IM (
-    .addr(PC[11:2]), .Ins(in_ins), .InsMemRW(InsMemRW), .clk(clk)
+    .addr(im_addr[11:2]), .Ins(in_ins), .InsMemRW(InsMemRW), .clk(clk)
 );
 
 // 实例化 IR
