@@ -18,8 +18,8 @@ module ControlUnit(
 );
 
     localparam S_IF_BOOT = 2'd0;
-    localparam S_IF      = 2'd1;
-    localparam S_EX      = 2'd2;
+    localparam S_FETCH      = 2'd1;
+    localparam S_EXEC      = 2'd2;
     localparam S_WB      = 2'd3;
 
     reg [1:0] state, next_state;
@@ -31,10 +31,10 @@ module ControlUnit(
 
     always @(*) begin
         case (state)
-            S_IF_BOOT: next_state = S_IF;
-            S_IF:      next_state = S_EX;
-            S_EX:      next_state = (opcode == `INSTR_LW_OP) ? S_WB : S_IF;
-            S_WB:      next_state = S_IF; // 与原设计一致：LW 后仍走取指，IPC 回到 0.498
+            S_IF_BOOT: next_state = S_FETCH;
+            S_FETCH:      next_state = S_EXEC;
+            S_EXEC:      next_state = (opcode == `INSTR_LW_OP) ? S_WB : S_FETCH;
+            S_WB:      next_state = S_FETCH; // 与原设计一致：LW 后仍走取指，IPC 回到 0.498
             default:   next_state = S_IF_BOOT;
         endcase
     end
@@ -59,12 +59,12 @@ module ControlUnit(
                 InsMemRW  = 1;
                 IM_UseNPC = 0; // 地址 = PC
             end
-            S_IF: begin
+            S_FETCH: begin
                 InsMemRW  = 1;
                 IM_UseNPC = 0;
                 IRWrite   = 1; // 锁存上一拍预取得到的 Q
             end
-            S_EX: begin
+            S_EXEC: begin
                 InsMemRW  = 1;
                 IM_UseNPC = 1; // 预取 NPC，供下一拍 IF 锁存
                 case (opcode)
@@ -137,7 +137,7 @@ module ControlUnit(
             end
             S_WB: begin
                 // 写回 RF/PC；IM 继续挂 NPC(=PC+4)，本拍不锁 IR
-                // 下一拍 S_IF 再 IRWrite，节拍与原 FETCH→EXEC→WB→FETCH 一致
+                // 下一拍 S_FETCH 再 IRWrite
                 PCWrite   = 1;
                 RFWrite   = 1;
                 WDSel     = `WDSel_FromMEM;

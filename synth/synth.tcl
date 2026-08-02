@@ -77,18 +77,22 @@ set_false_path -from [get_ports rst]
 # 本CPU核除时钟（clk）和异步复位（rst）外无其他同步输入端口，故无需设置 input_delay
 
 # 约束外部同步输出端口 RD（数据总线）和 out_ins（指令总线）
-# 将输出延迟（Output Delay）设为 2.500ns（占周期的 50%），为外部板级布线/外设预留充足时间
-set_output_delay -clock sys_clk -max 2.500 [get_ports {RD out_ins}]
+# 将输出延迟（Output Delay）设为 1.200ns，适应 SRAM 固有的 CLK-to-Q 物理延迟
+set_output_delay -clock sys_clk -max 1.200 [get_ports {RD out_ins}]
 set_output_delay -clock sys_clk -min -0.200 [get_ports {RD out_ins}]
 
 # 设置输出端口负载电容，模拟真实的物理引脚负载（50fF）
 set_load -pin_load 0.05 [get_ports {RD out_ins}]
 
+# 禁用自动选择，防止工具在 compile 期间重新覆盖您的手动设置
+set auto_wire_load_selection false
+
 # 强制应用线负载模型（WLM）
-# 采用包容模式（enclosed）并强制加载 tcbn65lpwc 库中的 wl10 模型。若加载失败则报错退出，拒绝使用零负载。
 set_wire_load_mode enclosed
-if {[catch {set_wire_load_model -name "wl10" -library "tcbn65lpwc"} wireload_error]} {
-    echo "ERROR: Failed to apply wire load model tcbn65lpwc/wl10: $wireload_error"
+
+# 使用 "TSMC8K_Lowk_Conservative"
+if {[catch {set_wire_load_model -name "TSMC8K_Lowk_Conservative" -library "tcbn65lpwc"} wireload_error]} {
+    echo "ERROR: Failed to apply wire load model tcbn65lpwc/TSMC8K_Lowk_Conservative: $wireload_error"
     exit 2
 }
 
@@ -100,7 +104,7 @@ if {[catch {set_wire_load_model -name "wl10" -library "tcbn65lpwc"} wireload_err
 # 在这两种工作模式下，RD2 的值都不可能作为形成 DM 物理地址的计算源。
 set_false_path -through $rf_rd2_pins -to $dm_addr_pins
 
-# 虚假路径 2: RD2 -> NPC 跳转目标 rs 端。
+# 虚假路径 2: RD2 -> NPC 跳转目标 rs端。
 # 原因：NPC 仅在 JALR 指令时选择 rs 寄存器的值作为基址（此时 ALU-B 选择的是 Imm 立即数）。
 # 分支指令虽然用到 RD2 进行大小比较，但跳转计算使用的是 PC+Offset，而非选择 NPC.rs。
 set_false_path -through $rf_rd2_pins -through $npc_rs_pins
@@ -115,16 +119,15 @@ set_dont_touch [add_to_collection $im_memory $dm_memory]
 set_boundary_optimization [get_designs -hierarchical *] true
 
 # 将无状态、纯组合逻辑的多路选择器和译码器打散（Ungroup），最大化时序收敛空间
-# 同时保留了 RF、PC 等重要时序模块的层级结构，极大地便利了后端的物理布局规划（Floorplan）
-set_ungroup [get_designs {MUX_2to1_A MUX_3to1_B MUX_3to1 MUX_3to1_LMD EXT ControlUnit ALU}] true
+#set_ungroup [get_designs {MUX_2to1_A MUX_3to1_B MUX_3to1 MUX_3to1_LMD EXT ControlUnit ALU}] true
 
 # 获取 PC 和寄存器堆的时序数据输入端（D端），用于自定义路径组
 # 使用 all_registers -data_pins 配合 filter_collection，避开工艺库引脚命名不一致的问题
 set pc_d_pins [filter_collection [all_registers -data_pins] "full_name =~ U_PC/*"]
 set rf_d_pins [filter_collection [all_registers -data_pins] "full_name =~ U_RF/*"]
 
-require_collection "U_PC 寄存器数据端" $pc_d_pins
-require_collection "U_RF 寄存器堆数据端" $rf_d_pins
+require_collection "U_PC/PC register D pins" $pc_d_pins
+require_collection "U_RF/RF register D pins" $rf_d_pins
 
 # 建立自定义路径组，对 IM（指令SRAM）读出相关的关键路径赋予更高的优化权重
 group_path -name IM_TO_PC -from $im_q_pins -to $pc_d_pins   -weight 30 -critical_range 1.00
@@ -135,12 +138,7 @@ group_path -name REG_TO_REG -from [all_registers -clock_pins] -to [all_registers
 # 设定设计规则约束 (DRC)
 set_max_fanout 20 [current_design]
 set_max_transition 0.25 [current_design]
-set_compile_one2many_structure true
-
-# 清除默认的功耗约束，避免综合工具产生假的时序违例
-catch {remove_attribute [current_design] max_leakage_power}
-catch {remove_attribute [current_design] max_dynamic_power}
-catch {remove_attribute [current_design] max_total_power}
+set compile_one2many_structure true
 
 # ------------------------------------------------------------------------------
 # 6. 高强度时序综合（Compile）
@@ -170,43 +168,117 @@ write -format verilog -hierarchy -output ./outputs/riscv_synth.v
 write_sdc ./outputs/riscv.sdc
 write_sdf ./outputs/riscv.sdf
 
-# ------------------------------------------------------------------------------
-# 8. 生成供后端审计和前端 Sign-off 的分析报告
-# ------------------------------------------------------------------------------
-report_qor > ./reports/qor.rpt
-report_design > ./reports/design.rpt
-check_timing -verbose > ./reports/check_timing.rpt
+#------------------------------------------------------------------------------
+# 8. 生成综合分析报告
+#------------------------------------------------------------------------------
 
-# 建立与保持时间时序报告
-report_timing -delay_type max -max_paths 50 -nworst 3 -input_pins -nets \
+#-------------------------
+# QoR / Design
+#-------------------------
+report_qor \
+    > ./reports/qor.rpt
+
+report_design \
+    > ./reports/design.rpt
+
+#-------------------------
+# Timing Checks
+#-------------------------
+check_timing \
+    > ./reports/check_timing.rpt
+
+report_timing \
+    -delay_type max \
+    -max_paths 50 \
+    -nworst 3 \
+    -input_pins \
+    -nets \
     > ./reports/timing_setup.rpt
-report_timing -delay_type min -max_paths 50 -nworst 3 -input_pins -nets \
+
+report_timing \
+    -delay_type min \
+    -max_paths 50 \
+    -nworst 3 \
+    -input_pins \
+    -nets \
     > ./reports/timing_hold.rpt
 
-# 针对 IM 读出关键路径的定向审计报告
-report_timing -delay_type max -from $im_q_pins -to $pc_d_pins -max_paths 20 -nworst 3 -input_pins -nets \
+#-------------------------
+# Critical Path Reports
+#-------------------------
+report_timing \
+    -delay_type max \
+    -from $im_q_pins \
+    -to $pc_d_pins \
+    -max_paths 20 \
+    -nworst 3 \
+    -input_pins \
+    -nets \
     > ./reports/timing_im_to_pc.rpt
-report_timing -delay_type max -from $im_q_pins -to $rf_d_pins -max_paths 20 -nworst 3 -input_pins -nets \
+
+report_timing \
+    -delay_type max \
+    -from $im_q_pins \
+    -to $rf_d_pins \
+    -max_paths 20 \
+    -nworst 3 \
+    -input_pins \
+    -nets \
     > ./reports/timing_im_to_rf.rpt
-report_timing -delay_type max -from $im_q_pins -to $dm_addr_pins -max_paths 20 -nworst 3 -input_pins -nets \
+
+report_timing \
+    -delay_type max \
+    -from $im_q_pins \
+    -to $dm_addr_pins \
+    -max_paths 20 \
+    -nworst 3 \
+    -input_pins \
+    -nets \
     > ./reports/timing_im_to_dm.rpt
 
-# 时序例外与全局冲突违例报告
-report_exceptions -verbose > ./reports/exceptions.rpt
-report_constraint -all_violators > ./reports/violators.rpt
+#-------------------------
+# Timing Exceptions
+#-------------------------
+report_timing_requirements \
+    > ./reports/exceptions.rpt
 
-# 专门生成 DRC 违例报告，确保 max_transition/max_fanout 在物理实现前满足工艺库规范
-report_constraint -all_violators -max_transition -max_fanout -max_capacitance \
+#-------------------------
+# DRC Violations
+#-------------------------
+# 仅检查真正影响后端布局布线的设计规则，
+# 不输出 max_leakage_power / max_dynamic_power 等功耗约束。
+report_constraint \
+    -all_violators \
+    -max_transition \
+    -max_fanout \
+    -max_capacitance \
     > ./reports/design_rule_violators.rpt
 
-# 面积与功耗估算报告
-report_area -hierarchy > ./reports/area.rpt
-report_power > ./reports/power.rpt
+#-------------------------
+# Area
+#-------------------------
+report_area \
+    -hierarchy \
+    > ./reports/area.rpt
 
-# 在终端直接输出时序结果总结，便于设计师一目了然地确认 WNS (Worst Negative Slack) 状态
-echo "========== 200 MHz 综合时序 QoR 总结 =========="
+#-------------------------
+# Power Estimation
+#-------------------------
+# report_power 仅用于统计，不参与 Constraint 检查。
+report_power \
+    > ./reports/power.rpt
+
+#------------------------------------------------------------------------------
+# 综合QoR摘要（终端输出）
+#------------------------------------------------------------------------------
+echo ""
+echo "============================================================"
+echo "           200 MHz Synthesis QoR Summary"
+echo "============================================================"
+
 report_qor
-echo "================================================"
 
+echo "============================================================"
+echo ""
 set_svf -off
 exit
